@@ -87,9 +87,13 @@
           const [isDragging, setIsDragging] = useState(false);
           const [draggedButton, setDraggedButton] = useState(null);
           const [showSidebar, setShowSidebar] = useState(false);
+          
+          // NUEVO: Estado para el modo de edición/movimiento
+          const [isEditMode, setIsEditMode] = useState(false);
+
           const imageRef = useRef(null);
           const containerRef = useRef(null);
-          const longPressTimer = useRef(null);
+          // const longPressTimer = useRef(null); // ELIMINADO: Ya no se usa
 
           useEffect(() => {
             loadData();
@@ -191,10 +195,24 @@
               .sort((a, b) => b.total - a.total);
           };
 
+          // LÓGICA DE INTERACCIÓN UNIFICADA Y MODIFICADA
           const handleButtonClick = (button, e) => {
-            if (isDragging) return;
-            
             e.stopPropagation();
+            
+            if (isDragging) return; // Si estamos terminando un arrastre, ignorar el click
+
+            if (isEditMode) {
+                // MODO EDICIÓN: Click/Tap abre el diálogo de edición
+                setEditingButton(button);
+                setEditForm({
+                  width: button.width || 50,
+                  height: button.height || 30
+                });
+                setShowEditDialog(true);
+                return;
+            }
+            
+            // MODO INSPECCIÓN: Click/Tap abre el menú de defectos
             const rect = e.currentTarget.getBoundingClientRect();
             setSelectedButton(button);
             setMenuPosition({
@@ -208,35 +226,59 @@
             if (!imageRef.current) return null;
             
             const imgRect = imageRef.current.getBoundingClientRect();
+            // Calcular posición relativa al 100% del ancho/alto de la imagen
             const x = ((clientX - imgRect.left) / imgRect.width) * 100;
             const y = ((clientY - imgRect.top) / imgRect.height) * 100;
             
             return {
-              x: Math.max(2, Math.min(98, x)),
+              // Asegurar que no se salga de los límites de la imagen (de 2% a 98% para un pequeño margen)
+              x: Math.max(2, Math.min(98, x)), 
               y: Math.max(2, Math.min(98, y))
             };
           };
 
-          const handleRightMouseDown = (button, e) => {
-            if (e.button !== 2) return;
-            e.preventDefault();
+          // NUEVO: Inicio de arrastre unificado (Ratón/Táctil)
+          const handleDragStart = (button, e) => {
+            if (!isEditMode) return;
+            // Solo permitir el inicio del arrastre si es clic izquierdo (ratón) o evento táctil
+            if (e.button !== 0 && !e.touches) return;
+
+            e.preventDefault(); // Evita scroll y menú contextual
             e.stopPropagation();
             
             setIsDragging(true);
             setDraggedButton(button.id);
           };
 
+          // MOVIMIENTO PARA RATÓN
           const handleMouseMove = (e) => {
-            if (!isDragging || !draggedButton) return;
+            if (!isDragging || !draggedButton || !isEditMode) return;
             
             const pos = getPositionOnImage(e.clientX, e.clientY);
             if (!pos) return;
             
-            setButtons(buttons.map(b => 
+            setButtons(prevButtons => prevButtons.map(b => 
               b.id === draggedButton ? { ...b, x: pos.x, y: pos.y } : b
             ));
           };
 
+          // NUEVO: MOVIMIENTO PARA TÁCTIL
+          const handleTouchMove = (e) => {
+            if (!isDragging || !draggedButton || !isEditMode) return;
+            if (e.touches.length !== 1) return; // Solo arrastre con un dedo
+            
+            e.preventDefault(); 
+            
+            const touch = e.touches[0];
+            const pos = getPositionOnImage(touch.clientX, touch.clientY);
+            if (!pos) return;
+            
+            setButtons(prevButtons => prevButtons.map(b => 
+              b.id === draggedButton ? { ...b, x: pos.x, y: pos.y } : b
+            ));
+          };
+
+          // FIN DE ARRASTRE UNIFICADO
           const handleMouseUp = (e) => {
             if (isDragging && draggedButton) {
               setIsDragging(false);
@@ -244,22 +286,9 @@
             }
           };
 
-          const handleLongPress = (button, e) => {
-            longPressTimer.current = setTimeout(() => {
-              setEditingButton(button);
-              setEditForm({
-                width: button.width || 50,
-                height: button.height || 30
-              });
-              setShowEditDialog(true);
-            }, 500);
-          };
+          // ELIMINADO: handleRightMouseDown (reemplazado por Modo Edición)
+          // ELIMINADO: handleLongPress, handleLongPressEnd (reemplazado por Modo Edición + Click simple)
 
-          const handleLongPressEnd = () => {
-            if (longPressTimer.current) {
-              clearTimeout(longPressTimer.current);
-            }
-          };
 
           const registerDefect = (type) => {
             const key = `${selectedButton.id}_${type}`;
@@ -680,6 +709,20 @@
                   >
                     <Plus />
                   </button>
+                  
+                  {/* NUEVO BOTÓN PARA MODO EDICIÓN/MOVIMIENTO */}
+                  <button
+                    onClick={() => {
+                      setIsEditMode(!isEditMode);
+                      setShowDefectMenu(false); // Cierra cualquier menú abierto
+                      setShowAddButton(false);  // Cierra modo añadir
+                    }}
+                    className={`px-4 py-2 rounded ${isEditMode ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-gray-700 hover:bg-gray-600'} text-white`}
+                    title="Modo Edición (Mover/Ajustar Componentes)"
+                  >
+                    <Settings />
+                  </button>
+                  
                   <button
                     onClick={() => setView('heatmap')}
                     className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
@@ -711,7 +754,8 @@
                   <span className="text-white text-sm">← Arrastra</span>
                 </div>
               )}
-
+              
+              {/* Contenedor principal para la imagen y botones */}
               <div 
                 ref={containerRef}
                 className="flex-1 relative overflow-auto bg-gray-900"
@@ -727,6 +771,9 @@
                   }
                 }}
                 onDragOver={(e) => e.preventDefault()}
+                // NUEVOS MANEJADORES TÁCTILES
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleMouseUp}
               >
                 <img
                   ref={imageRef}
@@ -751,29 +798,22 @@
                       }}
                     >
                       <button
-                        className={`bg-blue-500 text-white shadow-lg transition font-bold border-2 rounded-lg ${isBeingDragged ? 'bg-opacity-90 border-yellow-400 border-4' : 'bg-opacity-60 border-white hover:bg-opacity-80'}`}
+                        className={`bg-blue-500 text-white shadow-lg transition font-bold border-2 rounded-lg ${isBeingDragged ? 'bg-opacity-90 border-yellow-400 border-4' : 'bg-opacity-60 hover:bg-opacity-80'} ${isEditMode ? 'border-yellow-400 border-dashed border-2 cursor-grab' : 'border-white cursor-pointer'}`}
                         style={{
                           width: `${button.width || 50}px`,
                           height: `${button.height || 30}px`,
                           fontSize: '11px',
-                          cursor: isBeingDragged ? 'move' : 'pointer'
+                          // NEW: cursor cambia en modo edición
+                          cursor: isEditMode ? (isBeingDragged ? 'grabbing' : 'grab') : 'pointer'
                         }}
-                        onClick={(e) => !isBeingDragged && handleButtonClick(button, e)}
-                        onMouseDown={(e) => {
-                          if (e.button === 0 && !isBeingDragged) {
-                            handleLongPress(button, e);
-                          }
-                        }}
-                        onMouseUp={handleLongPressEnd}
-                        onContextMenu={(e) => handleRightMouseDown(button, e)}
-                        onTouchStart={(e) => {
-                          if (!isBeingDragged) {
-                            handleLongPress(button, e);
-                          }
-                        }}
-                        onTouchEnd={handleLongPressEnd}
+                        onClick={(e) => handleButtonClick(button, e)}
+                        // NUEVOS MANEJADORES PARA INICIAR EL ARRASTRE
+                        onMouseDown={(e) => handleDragStart(button, e)} // Click normal (izquierdo) para arrastrar en modo edición
+                        onTouchStart={(e) => handleDragStart(button, e)}
+                        // ELIMINADAS: onMouseUp, onContextMenu, onTouchStart para long press
                       >
                         {button.name}
+                        {isEditMode && <Settings style={{width: '12px', height: '12px', marginLeft: '4px', display: 'inline'}} />}
                       </button>
                     </div>
                   );
