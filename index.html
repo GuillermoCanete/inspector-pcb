@@ -76,7 +76,7 @@
             }
         };
 
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useLayoutEffect } = React;
         
         const PCBDefectInspector = () => {
           const [models, setModels] = useState([]);
@@ -102,23 +102,31 @@
           const [isDragging, setIsDragging] = useState(false);
           const [draggedButton, setDraggedButton] = useState(null);
           const [showSidebar, setShowSidebar] = useState(false);
-          const [isEditMode, setIsEditMode] = useState(false);
+          const [isEditMode, setIsEditMode] = useState(false); // Estado Restaurado
           
-          const [puesto, setPuesto] = useState('');
+          const [puesto, setPuesto] = useState(''); // Estado Restaurado
           const [puestoInput, setPuestoInput] = useState('');
-          const [showStationDialog, setShowStationDialog] = useState(false);
+          const [showStationDialog, setShowStationDialog] = useState(false); // Estado Restaurado
           
           // Nuevo estado para el diálogo de sector
-          const [showSectorDialog, setShowSectorDialog] = useState(false);
-          const [tempButtonData, setTempButtonData] = useState(null);
+          const [showSectorDialog, setShowSectorDialog] = useState(false); // Estado Restaurado
+          const [tempButtonData, setTempButtonData] = useState(null); // Estado Restaurado
 
           // Nuevo estado para el efecto de pulso
-          const [pulsingButtonId, setPulsingButtonId] = useState(null);
+          const [pulsingButtonId, setPulsingButtonId] = useState(null); // Estado Restaurado
 
           const imageRef = useRef(null);
           const containerRef = useRef(null);
           
-          // Definición de tipos de defectos (centralizado)
+          // NUEVO ESTADO: Almacena los límites en píxeles de la imagen escalada (para alinear el overlay)
+          const [imageBounds, setImageBounds] = useState({
+              offsetX: 0,
+              offsetY: 0,
+              width: 0,
+              height: 0,
+          });
+
+          // Definición de tipos de defectos (centralizado - Restaurado)
           const defectTypes = {
               'faltante': { name: 'Faltante', color: 'bg-red-600', short: 'F' },
               'levantado': { name: 'Levantado', color: 'bg-orange-600', short: 'L' },
@@ -179,7 +187,7 @@
             }
           };
 
-          const handleSavePuesto = () => {
+          const handleSavePuesto = () => { // Función Restaurada
               if (!puestoInput.trim()) {
                   alert('Debe ingresar el puesto de inspección.');
                   return;
@@ -187,6 +195,50 @@
               setPuesto(puestoInput.trim());
               setShowStationDialog(false);
           }
+          
+          // --- LÓGICA DE ALINEACIÓN DE BOTONES (Corregida) ---
+          const calculateImageBounds = () => {
+              if (imageRef.current && containerRef.current) {
+                  const imgRect = imageRef.current.getBoundingClientRect();
+                  const containerRect = containerRef.current.getBoundingClientRect();
+                  
+                  // Los offsets son la distancia en píxeles desde la esquina superior izquierda del 
+                  // contenedor scrollable (containerRef) hasta la esquina de la imagen escalada.
+                  const offsetX = imgRect.left - containerRect.left; 
+                  const offsetY = imgRect.top - containerRect.top;
+
+                  setImageBounds({
+                      offsetX: offsetX, 
+                      offsetY: offsetY,
+                      width: imgRect.width,
+                      height: imgRect.height,
+                  });
+              }
+          };
+
+          // Usa useLayoutEffect para recalcular inmediatamente después de cambios en el DOM (como redimensionamiento)
+          useLayoutEffect(() => {
+              if (view === 'inspect' || view === 'heatmap') {
+                  calculateImageBounds(); 
+                  window.addEventListener('resize', calculateImageBounds);
+                  
+                  const img = imageRef.current;
+                  if (img && !img.complete) {
+                      img.addEventListener('load', calculateImageBounds);
+                  }
+                  
+                  return () => {
+                      window.removeEventListener('resize', calculateImageBounds);
+                      if (img) {
+                           img.removeEventListener('load', calculateImageBounds);
+                      }
+                  };
+              }
+              // Resetear límites al cambiar de vista
+              setImageBounds({ offsetX: 0, offsetY: 0, width: 0, height: 0 }); 
+          }, [view, currentModel]); 
+          
+          // --- FIN LÓGICA DE ALINEACIÓN DE BOTONES ---
 
 
           const handleImageUpload = (e) => {
@@ -300,10 +352,7 @@
             if (!imageRef.current) return null;
             
             const imgRect = imageRef.current.getBoundingClientRect();
-            // Los cálculos de posición deben ser relativos al contenedor scrollable,
-            // pero la posición de la imagen dentro del contenedor (scroll) debe ser ignorada.
-            // Para eso, la posición relativa (%) ya se encarga de la estabilidad.
-            // Aquí solo usamos clientX/clientY y el rectángulo de la imagen visible.
+            // Los cálculos de posición deben ser relativos a la imagen visible (imgRect)
             const x = ((clientX - imgRect.left) / imgRect.width) * 100;
             const y = ((clientY - imgRect.top) / imgRect.height) * 100;
             
@@ -337,7 +386,10 @@
           };
           
           const handleMouseMove = (e) => {
-            handleMove(e.clientX, e.clientY);
+            // Solo usar clientX/Y si no es un evento de toque simulado
+            if (e.buttons === 1) { // 1 = Botón izquierdo presionado
+               handleMove(e.clientX, e.clientY);
+            }
           };
 
           const handleTouchMove = (e) => {
@@ -430,8 +482,6 @@
             // 2. Activar modo edición automáticamente
             if (!isEditMode) {
                 setIsEditMode(true);
-                // Notificación simple
-                setTimeout(() => alert(`¡Componente "${newButton.name}" (${sector}) creado! Se activó el Modo Edición (botón amarillo) para que puedas arrastrarlo a su posición.`), 100);
             }
             
             // 3. Remover el pulso después de un tiempo
@@ -513,7 +563,7 @@
             return 'rgba(255, 0, 0, 0.8)';
           };
           
-          // Iconos
+          // Iconos (Restaurados)
           const Upload = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>;
           const Plus = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
           const BarChart3 = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
@@ -527,6 +577,7 @@
 
           // INICIO DE RENDERIZADO DE DIÁLOGOS Y VISTAS
 
+          // Diálogo de Puesto (Restaurado)
           if (showStationDialog) {
             return (
               <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -594,6 +645,7 @@
             );
           }
           
+          // Diálogo de Sector (Restaurado)
           if (showSectorDialog) {
             return (
               <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -625,7 +677,7 @@
             );
           }
 
-
+          // Diálogo de Edición (Restaurado)
           if (showEditDialog && editingButton) {
             return (
               <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -727,7 +779,7 @@
             return (
               <div className="fixed inset-0 bg-black z-50">
                 <div className="h-full flex flex-col">
-                  <div className="bg-gray-900 p-4 flex justify-between items-center">
+                  <div className="bg-gray-900 p-4 flex justify-between items-center flex-shrink-0">
                     <h2 className="text-white text-xl font-bold">Mapa de Calor - {model.name}</h2>
                     <button
                       onClick={() => setView('inspect')}
@@ -738,8 +790,11 @@
                   </div>
                   
                   {/* CONTENEDOR DE IMAGEN CORREGIDO: overflow-auto, no flex-1 directo */}
-                  <div className="flex-1 relative overflow-auto bg-gray-800">
-                    {/* Elemento que contiene la imagen y los botones, para asegurar que la imagen define el tamaño */}
+                  <div 
+                    ref={containerRef}
+                    className="flex-1 relative overflow-auto bg-gray-800 flex items-center justify-center" // Centrar la imagen en el contenedor
+                  >
+                    {/* Elemento que contiene la imagen */}
                     <div className="relative w-full h-full">
                       <img
                         src={model.image}
@@ -747,52 +802,63 @@
                         // Usamos object-contain para que la imagen se ajuste y centramos
                         className="w-full h-full object-contain" 
                         ref={imageRef} // Reutilizamos imageRef para cálculos relativos
+                        onLoad={calculateImageBounds}
                       />
                       
-                      {/* VISTA DE INDICADORES EN EL MAPA DE CALOR */}
-                      {getCurrentModelButtons().map(button => {
-                        const counts = getButtonDefectCount(button.id);
-                        const total = counts.total;
-                        
-                        // Solo mostrar indicadores si hay defectos
-                        if (total === 0) return null; 
-
-                        return (
-                          <div
-                            key={button.id}
-                            style={{
+                      {/* NUEVO OVERLAY: Se posiciona exactamente sobre la imagen escalada en PIXELES */}
+                      <div
+                          style={{
                               position: 'absolute',
-                              // Se usan los valores en % para que la posición sea relativa al tamaño de la imagen, corrigiendo el problema de movimiento.
-                              left: `${button.x}%`,
-                              top: `${button.y}%`,
-                              transform: 'translate(-50%, -50%)',
-                              pointerEvents: 'none', 
-                              zIndex: 10
-                            }}
-                          >
-                            {/* Círculo indicador de calor */}
-                            <div
-                              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-sm border-2 border-white shadow-lg"
-                              style={{ 
-                                backgroundColor: getDefectColor(total),
-                                animation: 'pulse 1.5s infinite' 
-                              }}
-                            >
-                              {total}
-                            </div>
-                            {/* Etiqueta flotante */}
-                            <div className="bg-black bg-opacity-90 text-white text-xs p-2 rounded mt-1 whitespace-nowrap text-center">
-                              <div className="font-bold">{button.name} ({button.sector})</div>
-                              <div className="grid grid-cols-2 text-left gap-x-2">
-                                <span className="text-red-400">Faltante: {counts.faltante}</span>
-                                <span className="text-orange-400">Levantado: {counts.levantado}</span>
-                                <span className="text-pink-400">Mal Ins.: {counts.mal_insertado}</span>
-                                <span className="text-indigo-400">Equivocado: {counts.equivocado}</span>
+                              top: `${imageBounds.offsetY}px`,
+                              left: `${imageBounds.offsetX}px`,
+                              width: `${imageBounds.width}px`,
+                              height: `${imageBounds.height}px`,
+                          }}
+                          className="z-20 pointer-events-none" 
+                      >
+                      
+                          {/* VISTA DE INDICADORES EN EL MAPA DE CALOR */}
+                          {getCurrentModelButtons().map(button => {
+                            const counts = getButtonDefectCount(button.id);
+                            const total = counts.total;
+                            
+                            // Solo mostrar indicadores si hay defectos
+                            if (total === 0) return null; 
+
+                            const defectLevel = total > 5 ? 'bg-red-700' : total > 2 ? 'bg-orange-600' : total > 0 ? 'bg-yellow-500' : 'hidden';
+
+                            return (
+                              <div
+                                key={button.id}
+                                style={{
+                                  position: 'absolute',
+                                  // Los porcentajes ahora son relativos a este overlay de tamaño de imagen
+                                  left: `${button.x}%`,
+                                  top: `${button.y}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                  pointerEvents: 'none', 
+                                  zIndex: 10,
+                                  width: `${button.width || 50}px`,
+                                  height: `${button.height || 30}px`,
+                                }}
+                              >
+                                {/* Círculo indicador de calor */}
+                                <div
+                                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm border-2 border-white shadow-lg ${defectLevel}`}
+                                  style={{ 
+                                    animation: 'pulse 1.5s infinite' 
+                                  }}
+                                >
+                                  {total}
+                                </div>
+                                {/* Etiqueta flotante */}
+                                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 translate-y-8 bg-black bg-opacity-90 text-white text-xs p-1 rounded mt-1 whitespace-nowrap text-center">
+                                  <div className="font-bold">{button.name} ({button.sector})</div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -891,7 +957,7 @@
               className={`absolute top-0 left-0 h-full bg-gray-900 transition-transform duration-300 z-40 ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}
               style={{ width: '160px' }}
             >
-              <div className="bg-gray-800 p-2 flex justify-between items-center">
+              <div className="bg-gray-800 p-2 flex justify-between items-center flex-shrink-0">
                 <h3 className="text-white font-bold text-xs">Defectos</h3>
                 <button
                   onClick={() => setShowSidebar(false)}
@@ -1014,10 +1080,9 @@
               )}
               
               {/* Contenedor principal para la imagen y botones */}
-              {/* CORRECCIÓN: El contenedor debe ser overflow-auto y contener la imagen y botones absolutos */}
               <div 
                 ref={containerRef}
-                className="flex-1 relative overflow-auto bg-gray-900"
+                className="flex-1 relative overflow-auto bg-gray-900 flex items-center justify-center" // Centrar contenido
                 onClick={() => showDefectMenu && setShowDefectMenu(false)}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1026,7 +1091,7 @@
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleMouseUp}
               >
-                {/* Elemento que contiene la imagen y los botones, para asegurar que la imagen define el tamaño */}
+                {/* Elemento que contiene la imagen */}
                 <div className="relative w-full h-full">
                     <img
                         ref={imageRef}
@@ -1034,43 +1099,57 @@
                         alt={model.name}
                         // Usamos object-contain para que la imagen se ajuste y centramos
                         className="w-full h-full object-contain"
+                        onLoad={calculateImageBounds}
                         style={{ userSelect: 'none' }}
                     />
                 
-                    {getCurrentModelButtons().map(button => {
-                        const isBeingDragged = draggedButton === button.id;
-                        const isPulsing = pulsingButtonId === button.id;
-                        
-                        return (
-                        <div
-                            key={button.id}
-                            style={{
-                            position: 'absolute',
-                            // Se usan los valores en % para que la posición sea relativa al tamaño de la imagen.
-                            left: `${button.x}%`,
-                            top: `${button.y}%`,
-                            transform: 'translate(-50%, -50%)',
-                            pointerEvents: 'auto'
-                            }}
-                        >
-                            <button
-                            className={`text-white shadow-lg transition font-bold border-2 rounded-lg ${button.sector === 'IA' ? 'bg-blue-500' : 'bg-purple-500'} ${isBeingDragged ? 'bg-opacity-90 border-yellow-400 border-4' : 'bg-opacity-60 hover:bg-opacity-80'} ${isEditMode ? 'border-yellow-400 border-dashed border-2 cursor-grab' : 'border-white cursor-pointer'} ${isPulsing ? 'animate-pulse-new' : ''}`}
-                            style={{
-                                width: `${button.width || 50}px`,
-                                height: `${button.height || 30}px`,
-                                fontSize: '11px',
-                                cursor: isEditMode ? (isBeingDragged ? 'grabbing' : 'grab') : 'pointer'
-                            }}
-                            onClick={(e) => handleButtonClick(button, e)}
-                            onMouseDown={(e) => handleDragStart(button, e)}
-                            onTouchStart={(e) => handleDragStart(button, e)}
+                    {/* NUEVO OVERLAY: Se posiciona exactamente sobre la imagen escalada en PIXELES (Fix de Movimiento) */}
+                    <div
+                          style={{
+                              position: 'absolute',
+                              top: `${imageBounds.offsetY}px`,
+                              left: `${imageBounds.offsetX}px`,
+                              width: `${imageBounds.width}px`,
+                              height: `${imageBounds.height}px`,
+                          }}
+                          className="z-20 pointer-events-none" // Permite clicks pasen al contenedor principal
+                    >
+
+                        {getCurrentModelButtons().map(button => {
+                            const isBeingDragged = draggedButton === button.id;
+                            const isPulsing = pulsingButtonId === button.id;
+                            
+                            return (
+                            <div
+                                key={button.id}
+                                style={{
+                                position: 'absolute',
+                                // Los porcentajes ahora son relativos a este overlay de tamaño de imagen
+                                left: `${button.x}%`,
+                                top: `${button.y}%`,
+                                transform: 'translate(-50%, -50%)',
+                                pointerEvents: 'auto'
+                                }}
                             >
-                            {button.name} ({button.sector})
-                            {isEditMode && <Settings style={{width: '12px', height: '12px', marginLeft: '4px', display: 'inline'}} />}
-                            </button>
-                        </div>
-                        );
-                    })}
+                                <button
+                                className={`text-white shadow-lg transition font-bold border-2 rounded-lg ${button.sector === 'IA' ? 'bg-blue-500' : 'bg-purple-500'} ${isBeingDragged ? 'bg-opacity-90 border-yellow-400 border-4' : 'bg-opacity-60 hover:bg-opacity-80'} ${isEditMode ? 'border-yellow-400 border-dashed border-2 cursor-grab' : 'border-white cursor-pointer'} ${isPulsing ? 'animate-pulse-new' : ''}`}
+                                style={{
+                                    width: `${button.width || 50}px`,
+                                    height: `${button.height || 30}px`,
+                                    fontSize: '11px',
+                                    cursor: isEditMode ? (isBeingDragged ? 'grabbing' : 'grab') : 'pointer'
+                                }}
+                                onClick={(e) => handleButtonClick(button, e)}
+                                onMouseDown={(e) => handleDragStart(button, e)}
+                                onTouchStart={(e) => handleDragStart(button, e)}
+                                >
+                                {button.name} ({button.sector})
+                                {isEditMode && <Settings style={{width: '12px', height: '12px', marginLeft: '4px', display: 'inline'}} />}
+                                </button>
+                            </div>
+                            );
+                        })}
+                    </div>
                 </div>
               
                 {showDefectMenu && !isDragging && (
@@ -1091,7 +1170,7 @@
     };
 
 
-    // COMPONENTE: Menú de Fallas en Columna
+    // COMPONENTE: Menú de Fallas en Columna (Restaurado)
     const DefectColumnMenu = ({ menuPosition, registerDefect, defectTypes, containerRef }) => {
         const menuRef = useRef(null);
         const [adjustedStyle, setAdjustedStyle] = useState({});
@@ -1110,8 +1189,8 @@
         const MENU_HEIGHT = (BUTTON_HEIGHT * defectItems.length) + (PADDING * (defectItems.length - 1)) + 20; // Altura total de la columna (aprox 200px)
         const BUTTON_OFFSET = 10; // Separación del componente
 
-        useEffect(() => {
-            if (!containerRef.current) return;
+        useLayoutEffect(() => {
+            if (!containerRef.current || !menuRef.current) return;
             
             const containerRect = containerRef.current.getBoundingClientRect();
             
@@ -1132,7 +1211,7 @@
             } else {
                 finalLeft = btnLeftX - BUTTON_WIDTH - BUTTON_OFFSET;
                 
-                if (finalLeft < containerRect.left) {
+                if (finalLeft < containerRect.left + PADDING) {
                     finalLeft = containerRect.left + PADDING; 
                 }
             }
