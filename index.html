@@ -88,12 +88,11 @@
           const [draggedButton, setDraggedButton] = useState(null);
           const [showSidebar, setShowSidebar] = useState(false);
           
-          // NUEVO: Estado para el modo de edición/movimiento
+          // Estado para el modo de edición/movimiento
           const [isEditMode, setIsEditMode] = useState(false);
 
           const imageRef = useRef(null);
           const containerRef = useRef(null);
-          // const longPressTimer = useRef(null); // ELIMINADO: Ya no se usa
 
           useEffect(() => {
             loadData();
@@ -195,7 +194,7 @@
               .sort((a, b) => b.total - a.total);
           };
 
-          // LÓGICA DE INTERACCIÓN UNIFICADA Y MODIFICADA
+          // LÓGICA DE INTERACCIÓN MODIFICADA
           const handleButtonClick = (button, e) => {
             e.stopPropagation();
             
@@ -237,7 +236,7 @@
             };
           };
 
-          // NUEVO: Inicio de arrastre unificado (Ratón/Táctil)
+          // Inicio de arrastre unificado (Ratón/Táctil)
           const handleDragStart = (button, e) => {
             if (!isEditMode) return;
             // Solo permitir el inicio del arrastre si es clic izquierdo (ratón) o evento táctil
@@ -262,7 +261,7 @@
             ));
           };
 
-          // NUEVO: MOVIMIENTO PARA TÁCTIL
+          // MOVIMIENTO PARA TÁCTIL
           const handleTouchMove = (e) => {
             if (!isDragging || !draggedButton || !isEditMode) return;
             if (e.touches.length !== 1) return; // Solo arrastre con un dedo
@@ -286,10 +285,6 @@
             }
           };
 
-          // ELIMINADO: handleRightMouseDown (reemplazado por Modo Edición)
-          // ELIMINADO: handleLongPress, handleLongPressEnd (reemplazado por Modo Edición + Click simple)
-
-
           const registerDefect = (type) => {
             const key = `${selectedButton.id}_${type}`;
             const modelDefects = defects[currentModel] || {};
@@ -307,25 +302,33 @@
             setSelectedButton(null);
           };
 
-          const createButtonFromDrop = (e) => {
-            if (!newButtonName.trim()) return;
+          // NUEVA LÓGICA: Crea el botón en el centro de la imagen y activa el modo edición
+          const handleCreateNewButton = () => {
+            if (!newButtonName.trim()) {
+              alert('Por favor, ingrese un nombre para el componente.');
+              return;
+            }
 
-            const pos = getPositionOnImage(e.clientX, e.clientY);
-            if (!pos) return;
-            
             const newButton = {
               id: Date.now().toString(),
               modelId: currentModel,
               name: newButtonName.trim(),
-              x: pos.x,
-              y: pos.y,
+              x: 50, // Posición por defecto: centro de la imagen (50% x)
+              y: 50, // Posición por defecto: centro de la imagen (50% y)
               width: 50,
               height: 30
             };
             
-            setButtons([...buttons, newButton]);
+            setButtons(prevButtons => [...prevButtons, newButton]);
             setNewButtonName('');
             setShowAddButton(false);
+            
+            // Sugerencia de UX: Activar el Modo Edición para que el usuario pueda moverlo inmediatamente
+            if (!isEditMode) {
+                setIsEditMode(true);
+                // Opcional: podrías usar un toast o un modal menos intrusivo que alert()
+                alert('¡Componente creado en el centro! Se activó automáticamente el Modo Edición (botón amarillo) para que puedas arrastrarlo a su posición.');
+            }
           };
 
           const deleteButton = (buttonId) => {
@@ -710,7 +713,7 @@
                     <Plus />
                   </button>
                   
-                  {/* NUEVO BOTÓN PARA MODO EDICIÓN/MOVIMIENTO */}
+                  {/* BOTÓN PARA MODO EDICIÓN/MOVIMIENTO */}
                   <button
                     onClick={() => {
                       setIsEditMode(!isEditMode);
@@ -740,9 +743,9 @@
                 </div>
               </div>
 
+              {/* NUEVA UI PARA CREAR COMPONENTE SIN DRAG & DROP */}
               {showAddButton && (
                 <div className="bg-green-600 p-3 flex gap-2 items-center flex-shrink-0">
-                  <GripVertical />
                   <input
                     type="text"
                     value={newButtonName}
@@ -750,8 +753,19 @@
                     placeholder="Nombre (ej: C1, R5)"
                     className="px-3 py-2 rounded flex-1"
                     autoFocus
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleCreateNewButton();
+                      }
+                    }}
                   />
-                  <span className="text-white text-sm">← Arrastra</span>
+                  <button
+                    onClick={handleCreateNewButton}
+                    disabled={!newButtonName.trim()}
+                    className={`px-4 py-2 rounded font-bold ${newButtonName.trim() ? 'bg-green-800 hover:bg-green-700' : 'bg-green-400'} text-white`}
+                  >
+                    Crear
+                  </button>
                 </div>
               )}
               
@@ -764,14 +778,7 @@
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
                 onContextMenu={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (showAddButton && newButtonName.trim()) {
-                    createButtonFromDrop(e);
-                  }
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                // NUEVOS MANEJADORES TÁCTILES
+                // ELIMINADAS: onDrop y onDragOver
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleMouseUp}
               >
@@ -807,10 +814,9 @@
                           cursor: isEditMode ? (isBeingDragged ? 'grabbing' : 'grab') : 'pointer'
                         }}
                         onClick={(e) => handleButtonClick(button, e)}
-                        // NUEVOS MANEJADORES PARA INICIAR EL ARRASTRE
-                        onMouseDown={(e) => handleDragStart(button, e)} // Click normal (izquierdo) para arrastrar en modo edición
+                        // MANEJADORES PARA INICIAR EL ARRASTRE
+                        onMouseDown={(e) => handleDragStart(button, e)}
                         onTouchStart={(e) => handleDragStart(button, e)}
-                        // ELIMINADAS: onMouseUp, onContextMenu, onTouchStart para long press
                       >
                         {button.name}
                         {isEditMode && <Settings style={{width: '12px', height: '12px', marginLeft: '4px', display: 'inline'}} />}
@@ -819,41 +825,34 @@
                   );
                 })}
 
-                {showAddButton && newButtonName.trim() && (
-                  <div className="absolute inset-0 border-4 border-dashed border-green-400 pointer-events-none flex items-center justify-center">
-                    <div className="bg-green-600 text-white p-6 rounded-lg text-center">
-                      <div className="flex justify-center mb-2"><GripVertical /></div>
-                      <p className="text-xl font-bold">Suelta aquí "{newButtonName}"</p>
+                {/* ELIMINADO: showAddButton overlay de arrastre */}
+              
+                {showDefectMenu && !isDragging && (
+                  <div
+                    className="fixed z-50"
+                    style={{
+                      left: menuPosition.x,
+                      top: menuPosition.y,
+                      transform: 'translate(-50%, -50%)'
+                    }}
+                  >
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => registerDefect('faltante')}
+                        className="bg-red-600 text-white px-8 py-5 rounded-lg shadow-2xl hover:bg-red-700 font-bold text-xl"
+                      >
+                        Faltante
+                      </button>
+                      <button
+                        onClick={() => registerDefect('levantado')}
+                        className="bg-orange-600 text-white px-8 py-5 rounded-lg shadow-2xl hover:bg-orange-700 font-bold text-xl"
+                      >
+                        Levantado
+                      </button>
                     </div>
                   </div>
                 )}
               </div>
-
-              {showDefectMenu && !isDragging && (
-                <div
-                  className="fixed z-50"
-                  style={{
-                    left: menuPosition.x,
-                    top: menuPosition.y,
-                    transform: 'translate(-50%, -50%)'
-                  }}
-                >
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => registerDefect('faltante')}
-                      className="bg-red-600 text-white px-8 py-5 rounded-lg shadow-2xl hover:bg-red-700 font-bold text-xl"
-                    >
-                      Faltante
-                    </button>
-                    <button
-                      onClick={() => registerDefect('levantado')}
-                      className="bg-orange-600 text-white px-8 py-5 rounded-lg shadow-2xl hover:bg-orange-700 font-bold text-xl"
-                    >
-                      Levantado
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         );
